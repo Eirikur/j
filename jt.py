@@ -4,7 +4,7 @@ Concept of listing only sched. items that are later than now.
 Don't list items that are in the past.
 Hmmmm.
 Obsolete: We should reload the kv store at midnight if we stay up through midnight.
-          We can schedule a reload of the kv store!!!!! 
+          We can schedule a reload of the kv store!!!!!
 """
 # Python
 import sys
@@ -32,7 +32,6 @@ from apscheduler.triggers.date import DateTrigger
 
 from pytz import timezone
 # import pdbr # debugger
-import stack_trace
 
 log = logging.getLogger('J.jt')
 debug = log.debug
@@ -46,16 +45,9 @@ relative_time_words = ['morning', 'night', 'noon', 'today',
                        'tonight', 'tomorrow']
 intervals = ['hourly', 'daily', 'weekly', 'monthly', 'yearly']
 time_words = list(chain(relative_time_words, abbrev_days, long_days))
-
-
-
-# from persistence import PersistentDict, PersistentList
-from search_lens import search_lens
-
-#
 parse_date_codes = [None, 'date', 'time', 'datetime']
 
-colon = ':' n
+colon = ':'
 nothing = ''
 newline = '\n'
 space = ' '
@@ -67,15 +59,9 @@ alert_dialog = f"{utility_path}/psg-dialog.py"
 tracing = None # for trace command
 prepositions = ['at', 'on']
 
-
-
-
-
 commands = ['test', 'status', 'crash', 'now', 'list',
             'ding', 'bong', 'chime']
-lens_commands = 'gdewi' # Search services, e.g. Google.
 
-#@stack_trace.stack_trace(with_return=True, with_exception=True, max_depth=2)
 def command(cmd_str: str)->str:
     # 8 October 2021: This needs to be a better parser, at least a bit.
     # 27 October: Now we have arguments and arguments_string
@@ -84,11 +70,7 @@ def command(cmd_str: str)->str:
         command, modifier, arguments = get_cmd(cmd_str)
         argument_string = ' '.join(arguments)
         full_string = space.join([command, argument_string])
-        if command in lens_commands:
-            lens_command = [command]
-            lens_command.extend(arguments)
-            return search_lens(lens_command)
-        elif command == 'test':
+        if command == 'test':
             return test()
         elif command == 'status':
             return status()
@@ -104,7 +86,7 @@ def command(cmd_str: str)->str:
                     return f"{argument_string} not found in scheduled jobs."
                 else:
                     return "No jobs."
-        
+
         elif command in ['ding', 'bong', 'chime']:
             audible_alert()
             return('Bong!')
@@ -144,10 +126,10 @@ def command(cmd_str: str)->str:
         elif command == 'hourly':
             return schedule_hourly(argument_string, no_visual=True)
         elif command == 'cron' or command == 'c':
-            return cron_jobs(argument_string)        
+            return cron_jobs(argument_string)
         elif command in intervals:
             print(f"Command in intervals: {command}")
-            return schedule_repeating_item(argument_string)        
+            return schedule_repeating_item(argument_string)
         elif command in ['sched', 'schedule'] or parse_date_from(full_string)[1]: # There is a schedule item.
             return schedule_item(cmd_str)
         else: # We did not match against a known command.
@@ -169,11 +151,11 @@ def command(cmd_str: str)->str:
     #     print(msg)
     #     return msg
 
-    
+
 def timer(item: str)->str:
     "schedule a cron item as a timer."
     pass
-    
+
 def schedule_hourly(item:str, no_visual=False)->str:
     # no_visual is for hourly chimes.
     item = without_time_words(item)
@@ -198,7 +180,7 @@ def schedule_daily(item:str)->str:
         return msg
     else:
         interval = interval_words[0]
-        
+
     if interval == 'hourly':
         print('hourly')
         job = scheduler.add_job(alert, 'cron', hour='*', args=[item],
@@ -213,7 +195,7 @@ def schedule_daily(item:str)->str:
         msg = f"Scheduled '{item}', daily at {hour}"
         print(msg)
         return msg
-        
+
     elif interval == 'monthly':
         print('monthly')
         #schedule call
@@ -222,7 +204,7 @@ def schedule_daily(item:str)->str:
         #schedule call
     else:
         return f"Sorry, {interval} is not a repeat interval. This should never happen."
-    
+
     msg = f"Scheduled '{item}' for {target_date.ctime()}"
     print(msg)
     return msg
@@ -241,7 +223,7 @@ def cancel_cron_jobs(target: str)->str:
     else:
         return 'There are no scheduled jobs matching "{target}"'
 
-    
+
 def status()->str:
     """Return some status information to the client.
        This was first needed so that the client
@@ -251,9 +233,9 @@ def status()->str:
            time.ctime()]
     return newline.join(msg)
 
-    
+
 # def setup_persistence(filename: str)->dict:
-#     return PersistentDict(filename)    
+#     return PersistentDict(filename)
 
 def test()->str:
     now = datetime.datetime.now()
@@ -275,7 +257,7 @@ def get_cmd(cmd_str: str)->str:
         arguments = words[2:] # Arguments start at 2 now.
     #command is words[0]
     command = words[0].casefold()
-    return command, modifier, arguments 
+    return command, modifier, arguments
 
 def time_string(word: str)->str:
     # Try to make a 00:00 time string out of word.
@@ -303,8 +285,8 @@ def date_jobs(target: str)->str:
 
 def cron_jobs(target: str)->str:
     if jobs := jobs_filter(cron_jobs_list(), target):
-        
-        return formatted_cron_jobs(jobs)  
+
+        return formatted_cron_jobs(jobs)
     else:
         return 'No current cron jobs.'
 
@@ -319,7 +301,7 @@ def cron_jobs_list()->list:
 def jobs_filter(jobs: list, target:str)->list:
     if jobs and target: # Neither can be empty.
         target = target.casefold()
-        
+
         return [job for job in jobs if target in job.args[0].casefold()]
     elif jobs: # We have jobs but target is null, return all of them.
         return jobs or f"No jobs matching '{target}'."
@@ -336,7 +318,7 @@ def formatted_cron_jobs(jobs: list)->str:
                 print(interval, str(job.trigger))
                 strings.append(f"Hourly - {space.join(job.args)} - {job.name.capitalize()}")
     return newline.join(strings)
-       
+
 def formatted_date_jobs(jobs: list)->str:
     today = datetime.datetime.now().date()
     return_list = []
@@ -387,9 +369,9 @@ def time_string_in(text: str)->str:
         if is_a_time(word):
             return time_string(word)
     return ''
-    
+
 def without_time_string(command: str)->str:
-    if command:    
+    if command:
         cmd = ' '.join([word for word in command.split() if not is_a_time(word)])
         return cmd
     else:
@@ -403,7 +385,7 @@ def without_time_words(text: str)->str:
             if word in time_words:
                 if index > 0:
                     if text[index - 1] in prepositions:
-                        del text[index - 1] 
+                        del text[index - 1]
         return space.join([word for word in text if word.casefold() not in time_words])
 
 def alert_novisual(msg:str)->None:
@@ -424,16 +406,16 @@ def alert(msg:str)->None:
     visual_alert(msg)
 
 def audible_alert()->None:
-    # info(f"Bong! at {time.ctime()}")        
+    # info(f"Bong! at {time.ctime()}")
     sound('Bong!')
 
 def sound(msg: str)->None:
     shell('aplay', alert_sound_file, '2>&1 /dev/null')
-    
+
 def audible_warning_alarm()->None:
     "Play a warning or klaxon sound until popup is dismissed."
     pass # No implementation yet.
-    
+
 def visual_alert(msg:str)->None:
     """
     Use private popup program to display the visible
@@ -441,7 +423,7 @@ def visual_alert(msg:str)->None:
     shell('notify-send', alert_dialog)
     os.putenv("DISPLAY", ":0")
     shell(alert_dialog, msg)
-        
+
 def notify(msg: str)->bool:
     msg = f"'{msg} at {time.ctime()}'"
     shell('notify-send', msg)
@@ -460,7 +442,7 @@ def shutdown():
     "Shut down to leave a clean state."
     # TODO persistent storage, other services.
     scheduler.shutdown()
-    
+
 # Set up our persistent storage.
 # kv = setup_persistence(persistence_filename)
 
@@ -498,7 +480,7 @@ def scheduler_setup():
     }
     scheduler = BackgroundScheduler()
     scheduler.configure(jobstores=jobstores, executors=executors,
-                        job_defaults=job_defaults, timezone=localtime) 
+                        job_defaults=job_defaults, timezone=localtime)
     scheduler.start()
     return scheduler
 
@@ -542,5 +524,3 @@ def setup()->bool: # Used by j.py, so don't add arguments.
 
 if __name__ == '__main__':
     self_test()
-    
-    

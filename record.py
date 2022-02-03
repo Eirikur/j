@@ -1,4 +1,4 @@
- 
+
 class Record(dict):
     __getattr__ = dict.__getitem__
     __delattr__ = None # dict.__delitem__
@@ -25,3 +25,12 @@ class Record(dict):
 
     def __missing__(self, *args, **kwargs):
         raise KeyError
+
+class ConstantRecord(Record):
+    error_msg = 'This object is immutable'
+    def __setattr__(self, key, value):
+        raise TypeError(self.error_msg)
+    def __setitem__(self, key, value):
+        raise TypeError(self.error_msg)
+    def __missing__(self, *args, **kwargs):
+        raise TypeError(self.error_msg)
