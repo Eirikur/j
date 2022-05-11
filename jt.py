@@ -40,7 +40,7 @@ error = log.error
 
 # Calendar words
 long_days = calendar.weekheader(9).casefold().split()
-abbrev_days = calendar.weekheader(3).casefold().split()
+abbrev_days = calendar.weekheader(3).casefold().split()1
 relative_time_words = ['morning', 'night', 'noon', 'today',
                        'tonight', 'tomorrow']
 intervals = ['hourly', 'daily', 'weekly', 'monthly', 'yearly']

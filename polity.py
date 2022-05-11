@@ -1,8 +1,15 @@
 #!/usr/bin/python3
-# 508 bytes is the max payload size for a single UDP packet
-"Check the Polity name."
-"If this message is a CQ, save the time it was sent and time out if no responses are seen."
-"SHORT_TIMEOUT = 5, LONG_TIMEOUT = 20"
+# 508 bytes is the msgax payload size for a single UDP packet
+# "Check the Polity name."
+# "If this message is a CQ, save the time it was sent and time out if no responses are seen."
+# "Mind the 'from:' key of the messages. from is Python keyword. You must"
+# "use msg['from'] and not my msg.from syntax"
+# How do we give up (no responses) and inform the user when trying to start?
+# Backup the databases.
+# Could send scheduled jobs as objects, but file transfer is more general.
+
+
+# "SHORT_TIMEOUT = 5, LONG_TIMEOUT = 20"
 
 from uuid import uuid4
 import socket
@@ -20,7 +27,6 @@ from record import Record, ConstantRecord
 
 POLITY_VERSION = 0.1
 multicast_group = ('224.3.29.71', 10000)
-# IP_ADDRESS = '239.192.1.100'
 MULTICAST_ADDRESS = '224.3.29.71'
 PORT_NUMBER = 4242 # 8079 would be ASII 'PO' FIXME This is entirely unused.
 TTL = 10
@@ -29,6 +35,7 @@ BUFFER_SIZE = 1024
 UTF8 = 'utf-8'
 HTTPS_PORT = 443
 WAN_TARGET = ('8.8.8.8', HTTPS_PORT) # Google name service. This needs to be up.
+MAX_MESSAGE_LENGTH = 65507 # UDP max bytes
 
 def background(job_func: Callable, *args, **kwargs):
     thread = None
@@ -40,34 +47,36 @@ def background(job_func: Callable, *args, **kwargs):
     return thread
 
 class Polity():
-    """Houses the send and receive m ethods that are used to communicate
+    """Houses the send and receive methods that are used to communicate
     in a Polity. May eventually house some Polity maintenance functions. """
-    peers = {}
-    roles = frozenset(['CMD_LINE', 'UI', 'BRAIN', 'SOUND'])
+    roles = frozenset(['CMD_LINE', 'UI', 'BRAIN', 'SOUND', 'DIALOG'])
     system_messages = (['CQ', 'IAM', 'RESEND', # Not exposed to clients.
                         'RELOAD', 'BADID', 'ACK', 'NAK'])
     msg_types = ['PLAY', 'CMD', 'SYS']
-    def __init__(self, name='Polity', callback=None, queue=None,
+    def __init__(self, name='Polity', simple=False, callback=None, queue=None,
                  multicast_address=MULTICAST_ADDRESS, port=PORT_NUMBER,
-                 ttl=TTL, roles=[], monitor=False):
+                 ttl=TTL, role=None, monitor=False):
         self.polity_version = POLITY_VERSION
         self.polity = name
-        self.roles = roles
+        self.role = role
         self.id = str(uuid4())
+        self.ip = self.ip_address()
         self.multicast_address = multicast_address
         self.port = port
         self.ttl = struct.pack('b', ttl)
         self.sequence_number = 0
         self.monitor = monitor
+
         if callback:
             self.callback = callback
             self.listener = self.listener_callback
         else:
             self.queue = queue if queue else Queue() # Accept passed queue or create one.
+            self.replies = Queue()
             self.listener = self.listener_queue
             self.get = self.queue.get
 
-        self.ip = self.ip_address()
+
         # Create the send socket.
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # Tell the operating system to add the socket to the multicast group
@@ -83,145 +92,179 @@ class Polity():
         s.bind(server_address)
         self.send_socket = s
         self.receive_socket = s # If this works, it's simpler.
-        self.receive_thread = background(self.listener)
-        self.timestamp = time.time()
-        self.join_or_start_polity()
+        self.timestamp = str(round(time.time(),2))
+        if not simple: # Simple mode does nothing in background.
+            self.receive_thread = background(self.listener)
+            self.join_or_start_polity()
+        else:
+            print('Simple mode. No background actions.')
 
-    def message(self, body='', type='TEXT', reply_to='')->dict:
+    def get_replies(self, timeout=0)->Message:
+        return self.replies.get()
+
+    def _send(self, msg):
+        self.sequence_number += 1 # Increment. This is the one place it happens.
+        msg['my_number'] = self.sequence_number
+        msg['timestamp'] = str(round(time.time(),2))
+        packed_msg = self.pack(msg)
+        if len(packed_msg) > MAX_MESSAGE_LENGTH:
+            self.send_long_message(msg)
+        else:
+            self.send_socket.sendto(packed_msg, multicast_group)
+
+    def _receive(self):
+        bytes, sender_addr = self.receive_socket.recvfrom(BUFFER_SIZE)
+        msg = self.unpack(bytes)
+        return self.message_handler(msg)
+
+    def send_long_message(self, msg:str)->bool:
+        print('send_long_message: NOT IMPLEMENTED')
+        return 1/0
+
+    def message(self, body, type='CMD', reply_to='')->dict:
         """Method for clients to call to get a Message object,
            pre-populated with useful default values."""
         msg =  {
             'version':    self.polity_version,
-            'type':       type,
-            'to_id':      b'',
-            'from_id':    self.id,
+            'polity':     self.polity,
+            'type':       type, # Defaults to CMD from the arguments.
+            'from':      self.id,
             'from_ip':    self.ip,
             'my_number':  self.sequence_number,
-            'reply_to':   reply_to,
             'body_len':   len(body),
-            'body':       body,
-            'body_checksum': 0,
-            'reply_function': None
+            'body':       body
         }
         return Message(msg)
 
-    def reply(self, msg):
-        """Method for clients to call to get a reply Message object.
+    def send_cmd(self, text:str):
+        msg = self.message(text)
+        self._send(msg)
+
+    def reply(self, msg, text, status=True): # Reply to msg with text.
+        """Method for clients to call to reply to a message.
            The input msg is the message we want to reply to."""
-        msg =  {
-            'version':    self.polity_version,
-            'type':       type,
-            'to_id':      b'',
-            'from_id':    self.id,
+        m =  { # msg.foo below is a field from the message we are replying to.
+            'polity':     self.polity, # Could be the sender message polity.
+            'type':       'REPLY',
+            'to':         msg['from'],
+            'from':       self.id,
             'from_ip':    self.ip,
-            'my_number':  self.sequence_number,
-            'reply_to':   reply_to,
-            'body_len':   len(body),
-            'body':       body,
+            'reply_to':   msg.my_number, # Outgoing number supplied in _send()
+            'body_len':   len(text),
+            'body':       text,
             'body_checksum': 0
         }
-        return Message(msg)
+        msg.update(m)
+        self._send(msg)
 
     def announce(self)->None:
         msg =  {
             'version':    self.polity_version,
             'polity':     self.polity,
             'type':       'IAM',
-            'to_id':      '',
-            'from_id':    self.id,
+            'from':    self.id,
             'from_ip':    self.ip,
-            'my_number':  self.sequence_number,
-            'reply_to':   0,
-            'body_len':   0,
-            'body':       '',
-            'body_checksum': 0,
-            'reply_function': None
+            'my_number':  self.sequence_number
         }
-        self.send(msg)
+        self._send(msg)
 
     def join_or_start_polity(self)->None:
+        """At the moment, all this is doing is sending an announcement.
+        """
         msg =  {
             'version':    self.polity_version,
             'polity':     self.polity,
             'type':       'CQ',
-            'to_id':      '',
-            'from_id':    self.id,
+            'to':      '',
+            'from':    self.id,
             'from_ip':    self.ip,
-            'my_number':  self.sequence_number,
-            'reply_to':   0,
-            'body_len':   0,
-            'body':       '',
-            'body_checksum': 0,
-            'reply_function': None
+            'my_number':  0, # Filled-in by _send()
+            'timestamp': ''
         }
-        self.send(msg)
+        self._send(msg)
 
     def ip_address(self)->str:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.connect(WAN_TARGET)
             return(sock.getsockname()[0])
 
-    def send(self, data):
-        self.print_values('Send', data)
-        self.send_socket.sendto(self.pack(data), multicast_group)
-        self.sequence_number += 1 # Increment for each message sent.
+    def send_text(self, text:str):
+        msg = self.message(text)
+        self._send(msg)
 
-    def receive(self):
-        bytes, sender_addr = self.receive_socket.recvfrom(BUFFER_SIZE)
-        data = self.unpack(bytes)
-        sender_addr = sender_addr[0]
-        return self.message_handler(data, sender_addr)
 
-    def print_values(self, id, msg)->None:
-            m = [str(msg[key]) for key in msg if msg[key]]
+    def print_values(self, label:str, msg:dict)->None:
+            m = [str(msg[key])[-16:] for key in msg if msg[key]]
             m = ' '.join(m)
-            print(f"{id}: {m}")
+            print(f"{label} {m}")
 
-    def pack(self, data):
+    def pack(self, msg:dict):
         "Pack up the data as if it were going on a long trip."
-        return bson.dumps(data) # .encode(UTF8)
+        msg = {key:value for (key, value) in msg.items() if value} # Strip null items
+        return bson.dumps(msg) # .encode(UTF8)
 
     def unpack(self, data):
         "Unpack the data to be useful to the caller."
         return bson.loads(data)
 
-    # def enter(self):
-    #     # Create the standard anounce message.
-    #     self.send('Et in Arcadia, ego.')
+    def doesnt_concern_us(self, msg)->bool:
+        """Filter out messages we sent, and messages from other polities."""
+        if msg['from'] == self.id or msg.polity != self.polity: # This message does not concern us.
+            return True
+        else:
+            # print(f"Concerns us: {msg['body']}")
+            return False
 
-    def listener_queue(self):
+    def listener_queue(self)->None:
+        """
+        This is bypassing message_handler() right now FIXME
+        Blocking loop that receives messages and puts them into queues.
+        Filtering seems reasonable here. It simplifies the clients.
+        """
         while True:
-            data = self.receive() # Blocks
-            if data:
-                print(data)
-                self.queue.put(data)
+            msg = self._receive() # Blocks
+            if msg:
+                if self.monitor:
+                    self.print_values('R:', msg)
+                if self.doesnt_concern_us(msg):
+                    print(f"from {msg['from']} our polity {self.polity} our id {self.id}")
+                    continue
+                self.queue.put(msg)
+                if msg.type == 'REPLY': # Replies can be 'to' or broadcast now.
+                    if 'to' in msg:
+                        if msg.to != self.id: # It's sent to another node.
+                            continue #
+                        self.replies.put(msg)
 
-    def listener_callback(self):
-        self.callback(self.receive())
+    # def listener_callback(self):
+    #     # This looks wrong. Was never tested. FIXME
+    #     self.callback(self._receive())
 
     def leave(self)->None:
-        self.send('BYE') # Something more forma55l?
+        self._send('BYE') # Something more formal?
         self.send_socket.close()
 
-    def message_handler(self, message, address  ):
+    def message_handler(self, message):
+        # Requires entire redesign.
         msg = Record(message)
-        if self.monitor:
-            self.print_values('Receive', data)
-        if msg.polity != self.polity: #
-            # If this is from a different polity:
-                # If we have no other members:
-                    # Change our polity name.
-                    self.polity = msg.polity
-                    self.timestamp = time.time()
-                    self.announce()
-                    return None
-        if msg.from_id == self.id:
-            if address == self.ip: # id and ip match: Ignore own sends.
+        if msg['from'] == self.id:
                 return None
-            else: # There's another node using this uuid4 id value!
-                print('BAD ID because duplicate.')
-                self.id = str(uuid4()) # Change our ID.
-        self.peers[address] = msg # Do things here.
+        if self.monitor:
+            self.print_values('R:', msg)
+        if msg.polity != self.polity: #
+            print(f"Recieved message from another polity: {msg.polity}")  # FIXME
+            print('Write some code to cope with this.') # TODO
+            # # If this is from a different polity:
+            #     # If we have no other members:
+            #         # Change our polity name.
+            #         self.polity = msg.polity
+            #         self.timestamp = time.time()
+            #         self.announce()
+            #         return None
+            # else: # There's another node using this uuid4 id value!
+            #     print('BAD ID because duplicate.')
+            #     self.id = str(uuid4()) # Change our ID.
+        # signifier = msg.role if 'role' in msg else msg['from']
         # Real work starts here. Polity-private messages maintain the polity.
         if msg.type in self.system_messages:
             # print(f"System message {msg.type}")
@@ -231,29 +274,22 @@ class Polity():
         else: # Not a system message, must be a client message.
             return msg
 
+
+
     def pause_then_announce(self):
         random.seed()
         time.sleep(2 * random.random()) # Up to two seconds
         self.announce()
 
-    # def reply(self, msg:ConstantRecord)->None:
-    #     response = Record(msg) # We need to modify it.
-    #     response.reply_to = msg.my_number # This is a reply to your message.
-    #     response.to_id = msg.from_id
-    #     response.from_id = self.id
-    #     response.type = 'REPLY'
-    #     self.send(response)
-
-    # def add_peer(self, address):
-    #     pass
 
 def self_test():  # self-test should not be a system message! FIXME
     p = Polity()
     print(f"id: {p.id}")
     print()
+    p.send_text('Watson, I want you.')
     while True:
         msg = Message(p.get())
-        print(f"Received: {msg.type} from {msg.from_id}.")
+        print(f"Received: {msg.type} from {msg['from']}.")
 
 
 if __name__ == '__main__':

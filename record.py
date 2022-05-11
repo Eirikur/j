@@ -2,11 +2,11 @@
 class Record(dict):
     __getattr__ = dict.__getitem__
     __delattr__ = None # dict.__delitem__
- #    def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         self.__dict__ = self
-#         # self.__setitem__ = self.__setattr__
-# 4
+    #    def __init__(self, *args, **kwargs):
+    #         super().__init__(*args, **kwargs)
+    #         self.__dict__ = self
+    #         # self.__setitem__ = self.__setattr__
+    # 4
     def __setattr__(self, key, value):
         if key not in [*self.keys(), '__dict__']:
             raise KeyError('No new keys allowed')
