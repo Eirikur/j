@@ -7,9 +7,8 @@ alert_persistance = 60*60*8 # 8 Hours
 from polity import Polity
 
 
-def popup(msg:str)->None:
+def popup(msg: str)->None:
     layout = [[sg.Text(msg, font='Hack 72')]]
-    global win
     win = sg.Window(f"Alert at {time.ctime()}", layout,
                     # button_type = absent,
                     auto_close = True,

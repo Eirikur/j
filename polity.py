@@ -38,6 +38,7 @@ WAN_TARGET = ('8.8.8.8', HTTPS_PORT) # Google name service. This needs to be up.
 MAX_MESSAGE_LENGTH = 65507 # UDP max bytes
 
 def background(job_func: Callable, *args, **kwargs):
+    "Call a function that runs in its own thread."
     thread = None
     try:
         thread = Thread(target=job_func, daemon=True, *args, **kwargs)
@@ -184,6 +185,13 @@ class Polity():
         self._send(msg)
 
     def ip_address(self)->str:
+        # def ip_addresses()->dict:
+        #     "Returns [ip4 address, ip6 address]"
+        #     addresses = []
+        #     for protocol in [socket.AF_INET, socket.AF_INET6]:
+        #         with socket.socket(protocol, socket.SOCK_DGRAM) as sock:
+        #             sock.connect(WAN_TARGET)
+        #             addresses.append(sock.getsockname()[0])
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.connect(WAN_TARGET)
             return(sock.getsockname()[0])
@@ -194,9 +202,9 @@ class Polity():
 
 
     def print_values(self, label:str, msg:dict)->None:
-            m = [str(msg[key])[-16:] for key in msg if msg[key]]
-            m = ' '.join(m)
-            print(f"{label} {m}")
+        m = [str(msg[key])[-16:] for key in msg if msg[key]]
+        m = ' '.join(m)
+        print(f"{label} {m}")
 
     def pack(self, msg:dict):
         "Pack up the data as if it were going on a long trip."
