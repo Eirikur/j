@@ -95,26 +95,25 @@ def receiver_loop()->None:
                 print('Empty message!')
 
 def reply(input_msg, text, status)->None: #FIXME
-    print(f"Reply: {text}")
     if isinstance(text, list):
          text = newline.join(text)
     # elif isinstance(text, str):
     #     text = text.encode('utf-8')
+    elif isinstance(text, str):
+        pass
     else:
         reply = f"Reply error: |{text}| {type(text)}"
-    try:
-        P.reply(input_msg, text, status)
-    except Exception as e:
-        print(type(text), text)
-        print(f"Send error. {e}")
+        print(reply)
+
+    P.reply(input_msg, text, status)
+    # except Exception as e:
+        # print(type(text), text)
+        # print(f"Send error. {e}")
 
 def reload():
     """Reload updated source file..."""
     # TODO Needs to shut down any threads or processes.
-    msg = 'Will reload...'
-    reply(msg, '', True) # just to release the wait for the command line client
-    print(msg)
-    jt.shutdown() # Shut down the scheduling system.
+    jt.shutdown() # Shut down the scheduling system and any persistant things.
     print(f"Reloading from {__file__}.")
     os.execv(__file__,['nothing here'])  # Run a new iteration of the current script, providing any command line args from the current iteration.
 
@@ -145,7 +144,7 @@ def profile():
 
 
 def handle_request(input_msg):
-    cmd_string = input_msg.body
+    cmd_string = str(input_msg.body) # Force a copy.
     cmd, modifier, remainder = jt.get_cmd(cmd_string)
     if cmd == 'reload':
         reload()
@@ -171,15 +170,16 @@ def handle_request(input_msg):
         traceback.print_exc(file=open('j.traceback', 'w'))
         traceback.print_exc()
         tb = traceback.format_exc()
+        response = tb # In the exception path, response was undefined.
         reply(input_msg, tb, False)
-        reload()
+        input_msg.body = cmd_string
 
     elapsed = 1000 * (time.time() - start)
     cmd = input_msg['body']
     perf_msg = f"Performed '{cmd}' in {round(elapsed, 4)} milliseconds."
     print(perf_msg)
     with open(history_file, 'a') as f:
-        f.write(newline.join([input_msg.body, response, '\n']))
+        f.write(newline.join([time.ctime(), input_msg.body, response, newline]))
     reply(input_msg, response, True) # Status always true for now.
 
 def main()->None:

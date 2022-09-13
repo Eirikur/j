@@ -141,29 +141,29 @@ class Polity():
         msg = self.message(text)
         self._send(msg)
 
-    def reply(self, msg, text, status=True): # Reply to msg with text.
+    def reply(self, input_msg, text, status=True): # Reply to msg with text.
         """Method for clients to call to reply to a message.
            The input msg is the message we want to reply to."""
         m =  { # msg.foo below is a field from the message we are replying to.
             'polity':     self.polity, # Could be the sender message polity.
             'type':       'REPLY',
-            'to':         msg['from'],
+            'to':         input_msg['from'],
             'from':       self.id,
             'from_ip':    self.ip,
-            'reply_to':   msg.my_number, # Outgoing number supplied in _send()
+            'reply_to':   input_msg.my_number, # Outgoing number supplied in _send()
             'body_len':   len(text),
             'body':       text,
             'body_checksum': 0
         }
-        msg.update(m)
-        self._send(msg)
+        input_msg.update(m)
+        self._send(input_msg)
 
     def announce(self)->None:
         msg =  {
             'version':    self.polity_version,
             'polity':     self.polity,
             'type':       'IAM',
-            'from':    self.id,
+            'from':       self.id,
             'from_ip':    self.ip,
             'my_number':  self.sequence_number
         }
