@@ -149,7 +149,7 @@ def command(cmd_str: str)->str:
     #     l = f"Line number: {line_number}"
     #     msg = newline.join([msg,e,f,l,stack_dump])
     #     print(msg)
-    #     return msg
+    #     return msg 0
 
 
 def timer(item: str)->str:
