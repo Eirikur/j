@@ -147,6 +147,9 @@ def handle_request(input_msg):
     cmd_string = str(input_msg.body) # Force a copy.
     cmd, modifier, remainder = jt.get_cmd(cmd_string)
     if cmd == 'reload':
+        msg = 'Will reload.'
+        reply(input_msg, msg, True)
+        print(msg)
         reload()
     elif cmd == 'profile':
         return profile()

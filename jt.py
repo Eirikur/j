@@ -400,7 +400,7 @@ def alert(msg:str)->None:
     notify(log_msg)
     debug(log_msg)
     # Use a thread to not have to wait before display of popup.
-    sound()
+    sound(msg)
     # Need a thread because in order to close the window, it
     # must be able to respond to the close box. Can't use nowait.
     visual_alert(msg)
