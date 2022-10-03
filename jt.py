@@ -240,10 +240,13 @@ def status()->str:
 def test()->str:
     now = datetime.datetime.now()
     target_date = now + timedelta(minutes=1)
-    when = target_date.ctime()
-    msg = "Scheduled Test Alert!"
+    # breakpoint()
+    # when = target_date.ctime()
+    when = target_date.strftime("%H:%M")
+    msg = "fixed? Scheduled Test Alert!"
+    print(f"when: {when}", f"{when} {msg}")
     return command(f"{when} {msg}")
-    # return True
+
 
 def get_cmd(cmd_str: str)->str:
     # print(f"Command: {cmd_str}")
