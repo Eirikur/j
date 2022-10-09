@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+# Time-stamp: <2022-10-09 16:52:49 (eh)>
 """
 Concept of listing only sched. items that are later than now.
 Don't list items that are in the past.
@@ -19,7 +20,8 @@ from typing import Callable
 import traceback
 from itertools import chain
 import logging
-from subprocess import Popen
+from subprocess import CalledProcessError
+from subprocess import run
 from subprocess import DEVNULL
 
 # Third party
@@ -52,10 +54,9 @@ nothing = ''
 newline = '\n'
 space = ' '
 alert_sound_file = '/home/eh/Customization/Sounds/Bong.wav'
-persistence_filename = 'j-persistence.json'
 utility_path = path = os.path.dirname(os.path.abspath(__file__))
 X_display = ':0'
-alert_dialog = f"{utility_path}/psg-dialog.py"
+alert_dialog = f"{utility_path}/dialog.py"
 tracing = None # for trace command
 prepositions = ['at', 'on']
 
@@ -243,8 +244,8 @@ def test()->str:
     # breakpoint()
     # when = target_date.ctime()
     when = target_date.strftime("%H:%M")
-    msg = "fixed? Scheduled Test Alert!"
-    print(f"when: {when}", f"{when} {msg}")
+    msg = "Scheduled Test Alert!"
+    print(f"Command: {when} {msg}")
     return command(f"{when} {msg}")
 
 
@@ -424,6 +425,7 @@ def visual_alert(msg:str)->None:
     Use private popup program to display the visible
     Alert. Use & to avoid waiting. """
     shell('notify-send', alert_dialog)
+    print(f"Do you see a dialog: {msg}?")
     os.putenv("DISPLAY", ":0")
     shell(alert_dialog, msg)
 
@@ -432,14 +434,30 @@ def notify(msg: str)->bool:
     shell('notify-send', msg)
     return True
 
+
 def shell_cmd(cmd_args: list)->None:
-    # December 9 2021: No wait, no return value.
-    Popen(cmd_args, stdout=DEVNULL, stderr=DEVNULL)
+        pass
+
+def shell_cmd(cmd_args: list):
+    result = None
+    try:
+       result = run(cmd_args, capture_output=True, check=True)
+    except CalledProcessError as e:
+        print(e)
+    except Exception as e:
+        print(e)
+
+
+
 
 def shell(*args)->bool:
     args = list(args) # Comes in as a tuple from *args.
+    print(space.join(args))
     os.putenv("DISPLAY", ":0")
     return shell_cmd(args)
+
+
+
 
 def shutdown():
     "Shut down to leave a clean state."

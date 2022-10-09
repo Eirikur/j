@@ -42,7 +42,6 @@ history_file = '/home/eh/Projects/j/history.log'
 newline = '\n'
 space = ' '
 
-
 def set_up_logging():
     "docstring"
     # w%(filename)s Filename portion of pathname.
