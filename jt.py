@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Time-stamp: <2023-01-12 14:44:58 (eh)>
+# Time-stamp: <2023-01-12 15:19:01 (eh)>
 """ Concept of listing only sched. items that are later than now.
 Don't list items that are in the past. Hmmm. """
 
@@ -243,6 +243,7 @@ def schedule_repeating_interval(interval_value, interval_name, interval_command)
     return msg # Failure is the early return, above.
 
 def cancel_date_jobs(target: str)->str:
+
     if cancel_list := date_jobs(target): # jobs filtered.
         [job.remove() for job in cancel_list]
         return canceled_text(formatted_date_jobs(cancel_list))
@@ -321,10 +322,10 @@ def is_a_time(word: str)->bool:
 
 
 def date_jobs(target: str)->str:
-    if jobs:= jobs_filter(date_jobs_list(), target):
-        return formatted_date_jobs(jobs)
-    else:
-        return "No current appointments."
+    return formatted_date_jobs(jobs_filter(date_jobs_list(), target))
+    #     return formatted_date_jobs(jobs)
+    # else:
+    #     return "No current appointments."
 
 def cron_jobs(target: str)->str:
     if jobs := jobs_filter(cron_jobs_list(), target):
