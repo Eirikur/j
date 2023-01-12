@@ -1,12 +1,14 @@
 #!/usr/bin/python3
-# Time-stamp: <2022-10-09 16:52:49 (eh)>
-"""
-Concept of listing only sched. items that are later than now.
-Don't list items that are in the past.
-Hmmmm.
-Obsolete: We should reload the kv store at midnight if we stay up through midnight.
-          We can schedule a reload of the kv store!!!!!
-"""
+# Time-stamp: <2023-01-12 14:44:58 (eh)>
+""" Concept of listing only sched. items that are later than now.
+Don't list items that are in the past. Hmmm. """
+
+# We now have three trigger types. For cancel, list all (new command) we should
+# return lists for each if there are jobs in those categories.
+
+
+
+
 # Python
 import sys
 import os
@@ -16,7 +18,7 @@ import datetime
 from datetime import timedelta
 import calendar
 
-from typing import Callable
+# from typing import Callable
 import traceback
 from itertools import chain
 import logging
@@ -31,6 +33,7 @@ from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.executors.pool import ProcessPoolExecutor
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from pytz import timezone
 # import pdbr # debugger
@@ -46,7 +49,11 @@ abbrev_days = calendar.weekheader(3).casefold().split()
 relative_time_words = ['morning', 'night', 'noon', 'today',
                        'tonight', 'tomorrow']
 intervals = ['hourly', 'daily', 'weekly', 'monthly', 'yearly']
+minute_words = ['m', 'min', 'minute', 'minutes']
+hour_words =  ['hr', 'hour', 'hours']
+schedule_types = ['date', 'cron', 'interval']
 time_words = list(chain(relative_time_words, abbrev_days, long_days))
+repeat_words =['each', 'every', 'repeat', 'repeating']
 parse_date_codes = [None, 'date', 'time', 'datetime']
 
 colon = ':'
@@ -80,32 +87,59 @@ def command(cmd_str: str)->str:
         elif command == 'now':
             return 'noop'
         elif command == 'list':
-            if jobs := date_jobs(argument_string):
-                return formatted_date_jobs(jobs)
+            dated_jobs = date_jobs(argument_string)
+            crond_jobs = cron_jobs(argument_string)
+            intervald_jobs = interval_jobs(argument_string)
+
+            if any([dated_jobs, crond_jobs, intervald_jobs]):
+                return dated_jobs
+                # return newline.join([dated_jobs, crond_jobs, intervald_jobs])
             else:
                 if argument_string:
                     return f"{argument_string} not found in scheduled jobs."
                 else:
                     return "No jobs."
+        elif command == 'every':
+                print(f"Every: {argument_string}")
+                interval_value = modifier
+                interval_name = arguments[0]
+                interval_command = arguments[1:] # through end of line.
+                print(f"Every {interval_value} {interval_name}: {interval_command}")
+                return schedule_repeating_interval(interval_value, interval_name, interval_command)
+
 
         elif command in ['ding', 'bong', 'chime']:
             audible_alert()
             return('Bong!')
+        # elif command in ['cancel', 'remove']:
+        #     if len(arguments) >= 2:
+        #         modifier = arguments[0] # 'cancel daily swimming'
+        #         arguments = arguments[2:]
+        #         argument_string = space.join(arguments)
+        #         print('modifier:', modifier)
+        #         if modifier == 'cron' or modifier in intervals:
+        #             return cancel_cron_jobs(argument_string)
+        #         elif modifier in repeat_words:
+        #             return cancel_interval_jobs(argument_string)
+        #     else: # Cancelling a date-triggered event.
+        #         return cancel_date_jobs(argument_string)
         elif command in ['cancel', 'remove']:
             if len(arguments) >= 2:
-                modifier = arguments[0] # 'cancel daily swimming'
+                schedule_type = arguments[0] # 'cancel cron bong'
                 arguments = arguments[2:]
                 argument_string = space.join(arguments)
-                print('modifier:', modifier)
-                if modifier == 'cron' or modifier in intervals:
+                print('schedule_type:', schedule_type)
+                if schedule_type == 'cron' or schedule_type in intervals:
                     return cancel_cron_jobs(argument_string)
+                elif schedule_type == 'interval' or schedule_type in repeat_words:
+                    return cancel_interval_jobs(argument_string)
             else: # Cancelling a date-triggered event.
                 return cancel_date_jobs(argument_string)
         elif command in ['canceled', 'removed']:
             return 'noop'
-        elif command in ['sl', 'buy', 'purschase', 'shopping']:
+        elif command in ['sl', 'buy', 'purchase', 'shopping']:
             if modifier == 'list':
-                return 'Shopping list goes here.'
+                return 'Shopping  list goes here.'
             return 'noop'
         elif command in ['purge', 'expunge']:
             return 'noop'
@@ -122,14 +156,15 @@ def command(cmd_str: str)->str:
             return "Tracing {tracing}."
         elif command == 'shutdown':
             return shutdown()
-        elif command == 'reload':
-            return "jt.command received reload command!"
         elif command == 'hourly':
             return schedule_hourly(argument_string, no_visual=True)
         elif command == 'cron' or command == 'c':
             return cron_jobs(argument_string)
         elif command in intervals:
             print(f"Command in intervals: {command}")
+            return schedule_repeating_interval(argument_string)
+        elif command in repeat_words:
+            print(f"Command in repeat_words: {command}")
             return schedule_repeating_item(argument_string)
         elif command in ['sched', 'schedule'] or parse_date_from(full_string)[1]: # There is a schedule item.
             return schedule_item(cmd_str)
@@ -167,11 +202,16 @@ def schedule_hourly(item:str, no_visual=False)->str:
     print(msg)
     return msg
 
-def schedule_daily(item:str)->str:
+
+
+
+
+def schedule_repeating_item(item:str)->str:
+    print(f"Schedule Repeating Item: {item}")
     target_date, parse_status = parse_date_from(item)
-    hour = target_date.hour if parse_status else time_string_in(item)
-    if not hour:
-        return "No hour specified"
+    hour = target_date.hour if not parse_status else time_string_in(item)
+    # if not hour:
+    #     print("No hour specified")
     item = without_time_words(item)
     trigger = 'cron' # Apscheduler trigger method.
     # Find the interval specifier
@@ -182,33 +222,25 @@ def schedule_daily(item:str)->str:
     else:
         interval = interval_words[0]
 
-    if interval == 'hourly':
-        print('hourly')
-        job = scheduler.add_job(alert, 'cron', hour='*', args=[item],
-                            replace_existing=True)
-        msg = f"Scheduled '{item}', repeating on the hour."
-        print(msg)
-        return msg
-    elif interval == 'daily':
-        print('daily')
-        # schedule call because we need hour=hour
-        job = scheduler.add_job(alert, 'cron', hour=hour, args=[item]) #,id=str(int(time.time())), replace_existing=True)
-        msg = f"Scheduled '{item}', daily at {hour}"
-        print(msg)
-        return msg
+    # if interval == 'hourly':
 
-    elif interval == 'monthly':
-        print('monthly')
-        #schedule call
-    elif interval == 'yearly':
-        print('Wow, yearly!')
-        #schedule call
-    else:
-        return f"Sorry, {interval} is not a repeat interval. This should never happen."
 
-    msg = f"Scheduled '{item}' for {target_date.ctime()}"
-    print(msg)
-    return msg
+
+def schedule_repeating_interval(interval_value, interval_name, interval_command)->str:
+    interval_value = int(interval_value)
+    if interval_name in minute_words:
+        job = scheduler.add_job(alert, 'interval', minutes=interval_value, args=[interval_command],
+                                replace_existing=True)
+        return repr(job)
+    elif interval_name in hour_words:
+        job = scheduler.add_job(alert, 'interval', hours=interval_value, args=[interval_command],
+                                replace_existing=True)
+        return repr(job)
+    else: # support days, weeks
+        return f"Interval {interval_name} is not implemented yet."
+
+    msg = f"Scheduled '{interval_command}', every {interval_value} {interval_name}."
+    return msg # Failure is the early return, above.
 
 def cancel_date_jobs(target: str)->str:
     if cancel_list := date_jobs(target): # jobs filtered.
@@ -224,6 +256,12 @@ def cancel_cron_jobs(target: str)->str:
     else:
         return 'There are no scheduled jobs matching "{target}"'
 
+def cancel_interval_jobs(target: str)->str:
+    if cancel_list := jobs_filter(interval_jobs_list(), target): # jobs filtered.
+        [job.remove() for job in cancel_list]
+        return canceled_text(formatted_cron_jobs(cancel_list))
+    else:
+        return 'There are no scheduled jobs matching "{target}"'
 
 def status()->str:
     """Return some status information to the client.
@@ -238,10 +276,9 @@ def status()->str:
 # def setup_persistence(filename: str)->dict:
 #     return PersistentDict(filename)
 
-def test()->str:
+def test ()->str:
     now = datetime.datetime.now()
     target_date = now + timedelta(minutes=1)
-    # breakpoint()
     # when = target_date.ctime()
     when = target_date.strftime("%H:%M")
     msg = "Scheduled Test Alert!"
@@ -284,18 +321,36 @@ def is_a_time(word: str)->bool:
 
 
 def date_jobs(target: str)->str:
-    return jobs_filter(date_jobs_list(), target)
-
+    if jobs:= jobs_filter(date_jobs_list(), target):
+        return formatted_date_jobs(jobs)
+    else:
+        return "No current appointments."
 
 def cron_jobs(target: str)->str:
     if jobs := jobs_filter(cron_jobs_list(), target):
-
         return formatted_cron_jobs(jobs)
     else:
         return 'No current cron jobs.'
 
+def interval_jobs(target: str)->str:
+    if jobs := jobs_filter(interval_jobs_list(), target):
+        return formatted_interval_jobs(jobs)
+    else:
+        return "No current interval jobs"
+
+def formatted_interval_jobs(jobs):
+    return newline.join([f"{str(job)}" for job in jobs])
+
 def date_jobs_list()->list:
     return [job for job in scheduler.get_jobs() if isinstance(job.trigger, DateTrigger)]
+
+def interval_jobs_list()->list:
+    if jobs := [job for job in scheduler.get_jobs() if isinstance(job.trigger, IntervalTrigger)]:
+        return jobs
+    else:
+        return None
+
+
 def cron_jobs_list()->list:
     if jobs := [job for job in scheduler.get_jobs() if isinstance(job.trigger, CronTrigger)]:
         return jobs
@@ -304,27 +359,37 @@ def cron_jobs_list()->list:
 
 def jobs_filter(jobs: list, target:str)->list:
     if jobs and target: # Neither can be empty.
+        print(jobs, target)
+        jobs = [repr(job) for job in jobs]
         target = target.casefold()
 
         return [job for job in jobs if target in job.args[0].casefold()]
     elif jobs: # We have jobs but target is null, return all of them.
-        return jobs or f"No jobs matching '{target}'."
+        return jobs
+    else:
+        return None
+
+
 
 def formatted_cron_jobs(jobs: list)->str:
+    ####### Only hourly works, see below.
     if not jobs:
         return "No jobs passed into formatted_cron_jobs()."
     strings = []
     for job in jobs:
-        # if when := [interval[:-] for interval in intervals if interval in str(job.trigger)]: # Remove 'ly'4
         for interval in intervals:
-            # print(interval, str(job.trigger))
             if interval[:-2] in str(job.trigger):
                 print(interval, str(job.trigger))
-                strings.append(f"Hourly - {space.join(job.args)} - {job.name.capitalize()}")
+                if job.args == (None,):
+                    msg = 'Anonymous job'
+                else:
+                    msg = space.join(job.args)
+                strings.append(f"Hourly - {msg} - {job.name.capitalize()}")
     return newline.join(strings)
 
 def formatted_date_jobs(jobs: list)->str:
     today = datetime.datetime.now().date()
+    return_string = "No current appointments."
     return_list = []
     for job in jobs:
         job_type = job.name.capitalize()
@@ -400,21 +465,25 @@ def alert_novisual(msg:str)->None:
 
 
 def alert(msg:str)->None:
-    log_msg = f"{msg} {time.ctime()}"
-    notify(log_msg)
-    debug(log_msg)
-    # Use a thread to not have to wait before display of popup.
-    sound(msg)
-    # Need a thread because in order to close the window, it
-    # must be able to respond to the close box. Can't use nowait.
-    visual_alert(msg)
+    print(f"Alert wanted to display: {msg}")
+    return
+    # log_msg = f"{msg} {time.ctime()}"
+    # notify(log_msg)
+    # debug(log_msg)
+    # # Use a thread to not have to wait before display of popup.
+    # sound(msg)
+    # # Need a thread because in order to close the window, it
+    # # must be able to respond to the close box. Can't use nowait.
+    # visual_alert(msg)
 
 def audible_alert()->None:
     # info(f"Bong! at {time.ctime()}")
     sound('Bong!')
 
 def sound(msg: str)->None:
-    shell('aplay', alert_sound_file, '2>&1 /dev/null')
+    # shell('/usr/bin/play', '-q', alert_sound_file, 'gain -20') # '/dev/null')
+    print("Not emitting sound: {msg}")
+    return
 
 def audible_warning_alarm()->None:
     "Play a warning or klaxon sound until popup is dismissed."
@@ -424,24 +493,22 @@ def visual_alert(msg:str)->None:
     """
     Use private popup program to display the visible
     Alert. Use & to avoid waiting. """
-    shell('notify-send', alert_dialog)
-    print(f"Do you see a dialog: {msg}?")
-    os.putenv("DISPLAY", ":0")
-    shell(alert_dialog, msg)
+    # shell('/usr/bin/notify-send', alert_dialog)
+    # print(f"Do you see a dialog: {msg}?")
+    # os.putenv("DISPLAY", ":0")
+    # shell(alert_dialog, msg)
+    print(f"DEBUG: not displaying: {msg}")
 
 def notify(msg: str)->bool:
     msg = f"'{msg} at {time.ctime()}'"
-    shell('notify-send', msg)
+    shell('/usr/bin/notify-send', msg)
     return True
 
-
-def shell_cmd(cmd_args: list)->None:
-        pass
 
 def shell_cmd(cmd_args: list):
     result = None
     try:
-       result = run(cmd_args, capture_output=True, check=True)
+        result = run(cmd_args, capture_output=True, check=True, shell=True)
     except CalledProcessError as e:
         print(e)
     except Exception as e:
@@ -452,7 +519,8 @@ def shell_cmd(cmd_args: list):
 
 def shell(*args)->bool:
     args = list(args) # Comes in as a tuple from *args.
-    print(space.join(args))
+    args = [repr(arg) for arg in args]
+    space.join(args)
     os.putenv("DISPLAY", ":0")
     return shell_cmd(args)
 
@@ -508,7 +576,7 @@ def scheduler_setup():
 def self_test():
     setup()
     def print_jobs_filtered(search: str):
-        print(f'Should print jobs containing: {search}')
+        print(f'Should oprint jobs containing: {search}')
         jobs = job_list(search)
         print(formatted_job_list(jobs))
 

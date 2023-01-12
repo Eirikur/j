@@ -17,7 +17,7 @@ from typing import Callable
 from threading import Thread
 from queue import Queue
 import struct
-import bson
+import json
 import time
 import random
 
@@ -104,10 +104,16 @@ class Polity():
         return self.replies.get()
 
     def _send(self, msg):
+
         self.sequence_number += 1 # Increment. This is the one place it happens.
         msg['my_number'] = self.sequence_number
         msg['timestamp'] = str(round(time.time(),2))
-        packed_msg = self.pack(msg)
+        try:
+            packed_msg = self.pack(msg)
+
+            unpacked_msg = self.unpack(packed_msg)
+        except Exception as e:
+            print(f"In polity._send: {e}")
         if len(packed_msg) > MAX_MESSAGE_LENGTH:
             self.send_long_message(msg)
         else:
@@ -209,11 +215,38 @@ class Polity():
     def pack(self, msg:dict):
         "Pack up the data as if it were going on a long trip."
         msg = {key:value for (key, value) in msg.items() if value} # Strip null items
-        return bson.dumps(msg) # .encode(UTF8)
+
+        ### Debug the error via roundtripping.
+        s = [item for item in msg if type(item) == slice]
+        if s:
+            printf("slice! {s}")
+
+        # try:
+        #     packed = json.dumps(msg)
+        #     unpacked = json.loads(packed)
+        # except Exception as e:
+        #     print("E: {e}")
+        #     print(f"The msg that broke json: {msg}")
+        # return json.dumps(msg) # .encode(UTF8)
+
+        packed = json.dumps(msg)
+        unpacked = json.loads(packed)
+        return bytes(packed, 'utf-8')
+
 
     def unpack(self, data):
         "Unpack the data to be useful to the caller."
-        return bson.loads(data)
+        unpacked = "UnPacked"
+        try:
+            unpacked = json.loads(data)
+        except Exception as e:
+            print(f"polity.unpack: {e}")
+            print(data)
+            breakpoint()
+
+
+            exit()
+        return unpacked
 
     def doesnt_concern_us(self, msg)->bool:
         """Filter out messages we sent, and messages from other polities."""
@@ -252,9 +285,10 @@ class Polity():
         self._send('BYE') # Something more formal?
         self.send_socket.close()
 
-    def message_handler(self, message):
+    def message_handler(self, msg):
         # Requires entire redesign.
-        msg = Record(message)
+
+        msg = Message(msg)
         if msg['from'] == self.id:
                 return None
         if self.monitor:

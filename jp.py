@@ -20,7 +20,6 @@ import logging
 import traceback
 # import socket
 # import ipaddress
-
 # from typing import Callable, Iterable
 
 # import cProfile, pstats, io
@@ -35,6 +34,8 @@ import traceback
 import jt
 from polity import Polity
 from message import Message, Body
+
+version_of = 'Tue Oct 11 21:53:51 2022'
 
 log_file_name = '/home/eh/Projects/j/j.log'
 history_file = '/home/eh/Projects/j/history.log'
@@ -79,30 +80,39 @@ log = set_up_logging()
 
 def receiver_loop()->None:
     global P
+    print('receiver_loop...')
     while True:
-        print('receiver_loop...')
+        msg = ''
+        print('Message wait...')
         try:
             msg = P.get() # Blocking from Polity's output queue.
-            print(msg.body)
+            print(f"receiver_loop received command: {msg.body}")
         except Exception as e:
             error(f"Receive error. {e}")
             exit()
-        else:
+        finally:
             if len(msg):
-                handle_request(msg) # Same line of text from the original system.
+                try:
+                    handle_request(msg) # Same line of text from the original system.
+                except Exception as e:
+                    print(e)
+                finally:
+                    reload()
+                    continue
             else:
                 print('Empty message!')
+    print('Fell of the end! ##################################')
 
 def reply(input_msg, text, status)->None: #FIXME
     if isinstance(text, list):
          text = newline.join(text)
-    # elif isinstance(text, str):
-    #     text = text.encode('utf-8')
-    elif isinstance(text, str):
-        pass
-    else:
-        reply = f"Reply error: |{text}| {type(text)}"
-        print(reply)
+    # if len(text) > 256:
+    #     print('Ooops. Very long text is too long for reply...BUG!!!')
+    #     text = 'Ooops. Very long text is too long for reply...BUG!!!'
+    # # reply = f"Reply error: |{text}| {type(text)}"
+    print('Will reply with:')
+    print(text)
+
 
     P.reply(input_msg, text, status)
     # except Exception as e:
@@ -143,6 +153,8 @@ def profile():
 
 
 def handle_request(input_msg):
+    print(input_msg.body)
+
     cmd_string = str(input_msg.body) # Force a copy.
     cmd, modifier, remainder = jt.get_cmd(cmd_string)
     if cmd == 'reload':
@@ -161,6 +173,7 @@ def handle_request(input_msg):
         jt.shutdown()
         msg = 'Shutting down.'
         reply(input_msg, msg, True)
+
         print(msg)
         exit()
 
