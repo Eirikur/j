@@ -173,7 +173,6 @@ def handle_request(input_msg):
         jt.shutdown()
         msg = 'Shutting down.'
         reply(input_msg, msg, True)
-
         print(msg)
         exit()
 
@@ -198,11 +197,11 @@ def handle_request(input_msg):
     reply(input_msg, response, True) # Status always true for now.
 
 def main()->None:
+    set_up_logging()
+    global P
+    P = Polity()
     jt.setup() # Initialization of scheduling module.
     receiver_loop()
 
 if __name__ == '__main__':
-    set_up_logging()
-    global P
-    P = Polity()
     main()

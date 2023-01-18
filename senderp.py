@@ -25,9 +25,7 @@ def listener(p):
         servers_message = response.body
         print(servers_message)
         exit(0)
-    else:
-        print("Tried twice.")
-        exit(0)
+
 
 def main(arguments) -> None:
     p = Polity()
@@ -39,7 +37,7 @@ def main(arguments) -> None:
         arguments = ['list']
     reload_flag = True if command == "reload" else False
     cmd_line = space.join([arg for arg in arguments[:]])
-    print(f"Sending: {cmd_line}")
+    # print(f"Sending: {cmd_line}")
     p.send_cmd(cmd_line) # Message type defaults to CMD
     listener(p)
 

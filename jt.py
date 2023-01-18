@@ -1,13 +1,10 @@
 #!/usr/bin/python3
-# Time-stamp: <2023-01-12 15:19:01 (eh)>
+# Time-stamp: <2023-01-18 14:30:43 (eh)>
 """ Concept of listing only sched. items that are later than now.
 Don't list items that are in the past. Hmmm. """
 
 # We now have three trigger types. For cancel, list all (new command) we should
 # return lists for each if there are jobs in those categories.
-
-
-
 
 # Python
 import sys
@@ -37,6 +34,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from pytz import timezone
 # import pdbr # debugger
+
+triggers_to_formats = {CronTrigger: 'cron', DateTrigger: 'date', IntervalTrigger: 'interval'}
+
 
 log = logging.getLogger('J.jt')
 debug = log.debug
@@ -92,7 +92,7 @@ def command(cmd_str: str)->str:
             intervald_jobs = interval_jobs(argument_string)
 
             if any([dated_jobs, crond_jobs, intervald_jobs]):
-                return dated_jobs
+                return formatted_jobs(dated_jobs)
                 # return newline.join([dated_jobs, crond_jobs, intervald_jobs])
             else:
                 if argument_string:
@@ -255,14 +255,14 @@ def cancel_cron_jobs(target: str)->str:
         [job.remove() for job in cancel_list]
         return canceled_text(formatted_cron_jobs(cancel_list))
     else:
-        return 'There are no scheduled jobs matching "{target}"'
+        return f'There are no scheduled jobs matching "{target}"'
 
 def cancel_interval_jobs(target: str)->str:
     if cancel_list := jobs_filter(interval_jobs_list(), target): # jobs filtered.
         [job.remove() for job in cancel_list]
         return canceled_text(formatted_cron_jobs(cancel_list))
     else:
-        return 'There are no scheduled jobs matching "{target}"'
+        return f'There are no scheduled jobs matching "{target}"'
 
 def status()->str:
     """Return some status information to the client.
@@ -322,7 +322,7 @@ def is_a_time(word: str)->bool:
 
 
 def date_jobs(target: str)->str:
-    return formatted_date_jobs(jobs_filter(date_jobs_list(), target))
+    return jobs_filter(date_jobs_list(), target)
     #     return formatted_date_jobs(jobs)
     # else:
     #     return "No current appointments."
@@ -344,6 +344,7 @@ def formatted_interval_jobs(jobs):
 
 def date_jobs_list()->list:
     return [job for job in scheduler.get_jobs() if isinstance(job.trigger, DateTrigger)]
+
 
 def interval_jobs_list()->list:
     if jobs := [job for job in scheduler.get_jobs() if isinstance(job.trigger, IntervalTrigger)]:
@@ -388,6 +389,27 @@ def formatted_cron_jobs(jobs: list)->str:
                 strings.append(f"Hourly - {msg} - {job.name.capitalize()}")
     return newline.join(strings)
 
+def formatted_jobs(jobs: list)->str:
+    today = datetime.datetime.now().date()
+    return_string = "No current appointments."
+    return_list = []
+    if not jobs:
+        return return_string
+
+    first_job = jobs[0]
+    format_type = first_job.trigger
+    for job in jobs:
+        # job_type = job.name.capitalize()
+        text = job.args[0]
+        job_type = repr(job.trigger)
+        run_date = job.trigger.run_date
+        date_string = run_date.ctime()[:-8] # Remove seconds and year
+        list_entry = f"{date_string} - {text} - {job_type}"
+        if run_date.date() == today:
+            list_entry = today_text(list_entry)
+        return_list.append(list_entry)
+    return newline.join(return_list)
+
 def formatted_date_jobs(jobs: list)->str:
     today = datetime.datetime.now().date()
     return_string = "No current appointments."
@@ -410,11 +432,12 @@ def schedule_item(item: str)->str:
     target_date, parse_status = parse_date_from(item)
     item = without_time_words(item)
     now = datetime.datetime.now()
+    target_hour, target_minute = target_date.hour, target_date.minute
     past = False
     item = without_time_words(item)
     if target_date <= now:
         past = True
-        target_date = now + timedelta(days=1)
+        target_date = target_date + timedelta(days=1)
         warning = 'Job time was earlier today so it was scheduled for tommorrow.'
     match = [job for job in date_jobs_list() if job.trigger.run_date.date() == target_date.date() and job.args[0] == item]
     if match: # This code needs to be here because the date is adjusted.
