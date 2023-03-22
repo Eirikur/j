@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """July 2021 An incarnation of the Jeeves idea. Intended to be extensible.
 Runs as a service, running its services as threads or subprocesses.
-Listens via nng."""
+"""
 
 # use the atexit module to shut down things like profiling before exit()
 
@@ -18,6 +18,7 @@ import os
 import time
 import logging
 import traceback
+from sys import exc_info
 # import socket
 # import ipaddress
 # from typing import Callable, Iterable
@@ -86,19 +87,32 @@ def receiver_loop()->None:
         print('Message wait...')
         try:
             msg = P.get() # Blocking from Polity's output queue.
-            print(f"receiver_loop received command: {msg.body}")
+            # print(f"receiver_loop received command: {msg.body}")
         except Exception as e:
             error(f"Receive error. {e}")
             exit()
         finally:
             if len(msg):
-                try:
-                    handle_request(msg) # Same line of text from the original system.
-                except Exception as e:
-                    print(e)
-                finally:
-                    reload()
-                    continue
+                handle_request(msg) # Command line from client.
+                # try:
+                #     handle_request(msg) # Command line from client.
+                # except Exception as e:
+                #     print(f"in receiver_loop: {e}")
+                #     # exception_type, exception_objct, exception_traceback = exc_info()
+                #     # filename = exception_traceback.tb_frame.f_coallde.co_filename
+                #     # line_number = exception_traceback.tb_lineno
+                #     # stack_dump = traceback.format_stack()
+                #     # stack_dump = ''.join(stack_dump)
+                #     # msg = f"{__name__} from {__file__} had a problem."
+                #     # e = f"Exception type: {exception_type}"
+                #     # f =f"File name: {filename}"
+                #     # l = f"Line number: {line_number}"
+                #     # msg = newline.join([msg,e,f,l,stack_dump])
+                #     # print(msg)
+
+                # finally:
+                #     # reload()
+                #     continue
             else:
                 print('Empty message!')
     print('Fell of the end! ##################################')
@@ -131,30 +145,28 @@ def shutdown():
     jt.shutdown()
     exit()
 
-def profile():
-    if pr.active:
-        pr.disable()
-        pr.active = False
-        s = io.StringIO()
-        sortby = SortKey.CUMULATIVE
-        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        ps.print_stats()
-        ps.dump_stats('j-profile.dump')
-        text = s.getvalue()
-        print(text)
-        with open('j-profile.txt', 'w') as f:
-            f.write(text)
-        msg = 'Profiling deactivated and profile dumped'
-        print(msg)
-        return(msg)
-    else:
-        pr.enable()
-        return('Profiling enabled.')
+# def profile():
+#     if pr.active:
+#         pr.disable()
+#         pr.active = False
+#         s = io.StringIO()
+#         sortby = SortKey.CUMULATIVE
+#         ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+#         ps.print_stats()
+#         ps.dump_stats('j-profile.dump')
+#         text = s.getvalue()
+#         print(text)
+#         with open('j-profile.txt', 'w') as f:
+#             f.write(text)
+#         msg = 'Profiling deactivated and profile dumped'
+#         print(msg)
+#         return(msg)
+#     else:
+#         pr.enable()
+#         return('Profiling enabled.')
 
 
 def handle_request(input_msg):
-    print(input_msg.body)
-
     cmd_string = str(input_msg.body) # Force a copy.
     cmd, modifier, remainder = jt.get_cmd(cmd_string)
     if cmd == 'reload':
@@ -178,23 +190,32 @@ def handle_request(input_msg):
 
     # Okay, let's try to do as asked...
     start = time.time()
-    try:
-        response=jt.command(cmd_string)
-    except Exception as e:
-        traceback.print_exc(file=open('j.traceback', 'w'))
-        traceback.print_exc()
-        tb = traceback.format_exc()
-        response = tb # In the exception path, response was undefined.
-        reply(input_msg, tb, False)
-        input_msg.body = cmd_string
+    # try:
+    response=jt.do_command(cmd_string)
+    response = response if response else 'Nada. Bug.'
+    if not response:
+        print(f"Response from jt: {response}")
+
+    # except Exception as e:
+    #     print(f"in handle_request: {e}")
+    #     traceback.print_exc(file=open('j.traceback', 'w'))
+    #     traceback.print_exc()
+    #     tb = traceback.format_exc()
+    #     response = tb # In the exception path, response was undefined.
+    #     reply(input_msg, tb, False)
+    #     input_msg.body = cmd_string
 
     elapsed = 1000 * (time.time() - start)
     cmd = input_msg['body']
     perf_msg = f"Performed '{cmd}' in {round(elapsed, 4)} milliseconds."
     print(perf_msg)
+
+
     with open(history_file, 'a') as f:
         f.write(newline.join([time.ctime(), input_msg.body, response, newline]))
-    reply(input_msg, response, True) # Status always true for now.
+        reply(input_msg, response, True) # Status always true for now.
+
+
 
 def main()->None:
     set_up_logging()
