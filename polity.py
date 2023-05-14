@@ -2,8 +2,6 @@
 # 508 bytes is the msgax payload size for a single UDP packet
 # "Check the Polity name."
 # "If this message is a CQ, save the time it was sent and time out if no responses are seen."
-# "Mind the 'from:' key of the messages. from is Python keyword. You must"
-# "use msg['from'] and not my msg.from syntax"
 # How do we give up (no responses) and inform the user when trying to start?
 # Backup the databases.
 # Could send scheduled jobs as objects, but file transfer is more general.
@@ -31,11 +29,14 @@ MULTICAST_ADDRESS = '224.3.29.71'
 PORT_NUMBER = 4242 # 8079 would be ASII 'PO' FIXME This is entirely unused.
 TTL = 10
 UUID = uuid4()
-BUFFER_SIZE = 1024
+BUFFER_SIZE = 2048
 UTF8 = 'utf-8'
 HTTPS_PORT = 443
 WAN_TARGET = ('8.8.8.8', HTTPS_PORT) # Google name service. This needs to be up.
 MAX_MESSAGE_LENGTH = 65507 # UDP max bytes
+
+newline = '\n'
+
 
 def background(job_func: Callable, *args, **kwargs):
     "Call a function that runs in its own thread."
@@ -104,24 +105,25 @@ class Polity():
         return self.replies.get()
 
     def _send(self, msg):
-
         self.sequence_number += 1 # Increment. This is the one place it happens.
         msg['my_number'] = self.sequence_number
         msg['timestamp'] = str(round(time.time(),2))
         try:
             packed_msg = self.pack(msg)
-
-            unpacked_msg = self.unpack(packed_msg)
         except Exception as e:
             print(f"In polity._send: {e}")
-        if len(packed_msg) > MAX_MESSAGE_LENGTH:
-            self.send_long_message(msg)
+            print('bad pack/unpack')
+            return None
+            if len(packed_msg) > MAX_MESSAGE_LENGTH:
+                self.send_long_message(msg)
         else:
-            self.send_socket.sendto(packed_msg, multicast_group)
+            self.send_socket.sendto(bytes(packed_msg, 'utf-8'),
+                                    multicast_group)
 
     def _receive(self):
-        bytes, sender_addr = self.receive_socket.recvfrom(BUFFER_SIZE)
-        msg = self.unpack(bytes)
+        data, sender_addr = self.receive_socket.recvfrom(BUFFER_SIZE)
+        msg = self.unpack(data)
+
         return self.message_handler(msg)
 
     def send_long_message(self, msg:str)->bool:
@@ -215,37 +217,26 @@ class Polity():
     def pack(self, msg:dict):
         "Pack up the data as if it were going on a long trip."
         msg = {key:value for (key, value) in msg.items() if value} # Strip null items
-
-        ### Debug the error via roundtripping.
-        s = [item for item in msg if type(item) == slice]
-        if s:
-            printf("slice! {s}")
-
-        # try:
-        #     packed = json.dumps(msg)
-        #     unpacked = json.loads(packed)
-        # except Exception as e:
-        #     print("E: {e}")
-        #     print(f"The msg that broke json: {msg}")
-        # return json.dumps(msg) # .encode(UTF8)
-
-        packed = json.dumps(msg)
-        unpacked = json.loads(packed)
-        return bytes(packed, 'utf-8')
-
+        packed = json.dumps(msg, indent=4)
+        return packed
+        # return bytes(packed, 'utf-8')
 
     def unpack(self, data):
         "Unpack the data to be useful to the caller."
         unpacked = "UnPacked"
+
+
         try:
             unpacked = json.loads(data)
         except Exception as e:
             print(f"polity.unpack: {e}")
-            print(data)
-            breakpoint()
+            unpacked = f"Failed to unpack {len(data)} byte message. Check Polity buffer size."
+            print()
+            text = data.decode('utf-8').split(newline)
+            for line in text:
+                print(line)
+            print()
 
-
-            exit()
         return unpacked
 
     def doesnt_concern_us(self, msg)->bool:

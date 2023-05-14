@@ -21,12 +21,29 @@ def popup(msg:str)->None:
                     auto_close_duration = alert_persistance,
                     return_keyboard_events=True)
     time.sleep(1) # Stay visible for at least this long, even if a keystroke happens
-    win.read()
+    event, values = win.read()
     win.close()
+    return event, values
+
 
 def main(arguments )->None:
-    arguments = arguments[1:]
-    message = ' '.join(arguments)
-    popup(message)
+    p = Polity()
+    print('starting receiver_loop...')
+    while True:
+        msg = ''
+        print('Message wait...')
+        try:
+            msg = p.get() # Blocking from Polity's output queue.
+            print(f"receiver_loop received command: {msg.body}")
+        except Exception as e:
+            print(f"Receive error. {e}")
+            exit()
+        try:
+            print(f"popup: {msg.body}")
+            event, values = popup(msg.body)
+        except Exception as e:
+            print(f"Popup error. {e}")
+            exit()
+        print("from popup: {event} {values}")
 
 main(arguments)

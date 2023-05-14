@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Time-stamp: <2023-04-14 19:55:10 (eh)>
+# Time-stamp: <2023-05-14 15:27:08 (eh)>
 # Python
 import sys
 import os
@@ -9,7 +9,6 @@ import datetime
 from datetime import timedelta
 import calendar
 
-
 # """ Concept of listing only sched. items that are later than now.
 # Don't list items that are in the past. Hmmm. """
 
@@ -17,11 +16,6 @@ import calendar
 # return lists for each if there are jobs in those categories.
 
 ### Break out into parse and schedule modules.
-
-
-
-
-
 
 
 
@@ -45,6 +39,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from pytz import timezone
 # import pdbr # debugger
+
+from polity import Polity
+P = Polity()
 
 triggers_to_formats = {CronTrigger: 'cron', DateTrigger: 'date',
                        IntervalTrigger: 'interval'}
@@ -517,8 +514,10 @@ def notify(msg: str)->bool:
     return True
 
 def alert_dialog(msg: str)->bool:
-    print('blocked: alert_dialog', msg)
-    # subprocess.Popen([sys.executable, alert_program, f"{msg}"])
+
+    P.send(P.message(msg))
+    print(f"polity send from alert_dialog. Okay.")
+    print(msg.body)
 
 
 def shell_cmd(command: str):
@@ -613,7 +612,7 @@ def self_test():
     # print('Canceled:')
     # print(canceled_list)
 
-def setup()->bool: # Used by j.py, so don't add arguments.
+def setup()->bool: # Used by j.py
     global parse_date_from
     parse_date_from = parsedatetime.Calendar().parseDT # One time setup.
     print('Starting APScheduler...')
