@@ -14,16 +14,18 @@ from polity import Polity
 timeout = 2
 hour = 60 * 60
 space = ' '
+timeout_icon = "\u231A"
+success_icon = "\u2705"
 
 def listener(p):
     response = None
     try:
         response = p.get(timeout=timeout)
     except Empty as e:
-        print(f"Timed out at {timeout} seconds")
+        print(f"{timeout_icon} Timed out at {timeout} seconds")
     if response != None:
         servers_message = response.body
-        print(servers_message)
+        print(f"{success_icon} {servers_message}")
         exit(0)
 
 
